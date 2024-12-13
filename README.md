@@ -47,9 +47,24 @@ O **Cautious-umbrella** é ideal para:
 
 - A preencher
 
-## 🌐 Contribuições
+## 📖 Contribuindo
 
-Sinta-se à vontade para contribuir! Consulte o [CONTRIBUTING.md](./CONTRIBUTING.md) para mais informações.
+Contribuições são bem-vindas! Para contribuir:
+
+1. Faça um fork do repositório.
+2. Crie uma branch para sua feature ou correção de bug:
+   ```bash
+   git checkout -b minha-feature
+   ```
+3. Commit suas alterações:
+   ```bash
+   git commit -m "Descrição da minha feature"
+   ```
+4. Envie as alterações:
+   ```bash
+   git push origin minha-feature
+   ```
+5. Abra um pull request.
 
 ## ⚖️ Licença
 
