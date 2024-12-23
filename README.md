@@ -1,71 +1,100 @@
-# Cautious-umbrella
+# Cautious Umbrella
 
-![GitHub last commit](https://img.shields.io/github/last-commit/santanaMd/cautious-umbrella)
-![GitHub issues](https://img.shields.io/github/issues/santanaMd/cautious-umbrella)
-![License](https://img.shields.io/github/license/santanaMd/cautious-umbrella)
+## O que é
 
-Automatização completa para criação e configuração de clusters **K3s ARM64** com Ansible, projetada para dispositivos como Raspberry Pi e Orange Pi. O projeto inclui scripts de provisionamento, suporte a **Longhorn** para armazenamento distribuído e otimizações de rede para cenários leves e escaláveis.
+O nome é aleatório e foi gerado pelo próprio GitHub, eu gostei porque esse projeto vai ser um guarda-chuva para outras aplicações que vou hostear e projetos que quero tirar do papel. Também é algo cuidadoso, porque se vou criar um cluster quero que ele siga os mesmos padrões de um ambiente de produção.
 
-## 🚀 Visão Geral
+## Por quê fazer
 
-O **Cautious-umbrella** é ideal para:
-- Configuração rápida de clusters ARM64 para Kubernetes.
-- Homelabs ou ambientes de teste e aprendizado.
-- Ambientes distribuídos que necessitam de armazenamento eficiente e otimizado.
+São simples 3 motivos:
+1. Por educação. Acredito que só aprendemos fazendo e errando;
+2. Porque eu moro no brasil e cloud não é tão barata quanto na gringa;
+3. Porque é divertido.
 
-## 🛠️ Funcionalidades
+## Para que serve
 
-- **Provisionamento automatizado**: Scripts Ansible para configurar nós com facilidade.
-- **Suporte a Longhorn**: Armazenamento distribuído integrado para alta disponibilidade.
-- **Cluster K3s ARM64 leve e otimizado**: K3s é uma distribuição de Kubernetes lightweight, projetada para rodar em dispositivos de menor capacidade, como Raspberry Pi e Orange Pi, proporcionando alto desempenho com um footprint reduzido.
+Meus objetivos também são 3:
+- Migrar meu self-hosted de docker para o mais robusto **kubernetes** (k3s);
+- Ter uma plataforma para realizar o deploy do meu outro projeto [wisdom-core](https://github.com/santanaMd/wisdom-core), uma aplicação dos conceitos de **Data Engineer**;
+- Ter menos dor de cabeça com **SPOF** ([Single Point of Failure](https://en.wikipedia.org/wiki/Single_point_of_failure)) no meu homelab.
 
-## 🖥️ Requisitos
+# Definições do projeto
 
-- A preencher
-  
-## 📦 Instalação
+### Caracteristicas da Infraestrutura
+- **OS**: Ubuntu Server 24.04 LTS
+- **Hardware**: Raspberry PI 5 e Orange PI 5
+- **Número de nós**: 4
 
-1. Clone este repositório:
-    ```bash
-    git clone https://github.com/santanaMd/cautious-umbrella.git
-    cd cautious-umbrella
-    ```
+## Passos esperados
+- Instalação de Docker em grupo **docker-node**
+- Criação de Servidor MySQL docker para máquinas do grupo **k3s-database**
+- Instalação de nós K3s Server para grupos **server** e **hybrid**
+- Instalação de nós K3s Agent para grupos **docker-node** e **worker**
+- Aplicação de taints de acordo com especificações de grupo
+- LoadBalancer externo Kube-VIP
+- Aplicação de configuração de firewall entre os servidores
+- Configuração de Armazanamento Distribuído **Long Horn**
+- Aplicação do **Fluxo de Monitoração**
+- Configuração de Ingress Controler
+- Realizar deploy de **PiHole** para filtro de DNS e Local DNS
+- Configuração do **Cert Manager** para certificados automatizados
+- Implantação de backup em cloud **Amazon S3 Glacier**
 
-2. Instale as dependências no controlador:
-    ```bash
-    pip install -r requirements.txt
-    ```
+## Objetivo final
 
-3. Edite o arquivo `inventory.ini` para configurar os dispositivos.
+Configurar automaticamente cluster K3s que apresenta as seguintes características.
+- Alta Disponibilidade (HA)
+- MySQL como banco de dados do cluster
+- LoadBalancer externo Kube-VIP
+- Segregação de função de nós
+- Compliance com normas de segurança para ambientes de produção
+- Backup periódico cloud
+- Stack monitoring
+- Filtro de DNS e DNS Local
+- Certificados válidos e automaticos
 
-4. Execute o playbook:
-    ```bash
-    ansible-playbook -i inventory.ini setup_cluster.yml
-    ```
+## Configuração Ansible
 
-## 📚 Documentação
+### Grupos de servidores
+- docker-node
+- server
+- worker
+- hybrid
 
-- A preencher
+### Definição dos grupos
 
-## 📖 Contribuindo
+- **docker-node**
+    - Responsável por executar serviços docker. Em um deles está o banco de dados MySQL do cluster.
+    - Nós nesse grupo não devem executar workload server.
+    - Nós desse grupo devem apresentar taint para execução de apenas workloads de monitoramento.
 
-Contribuições são bem-vindas! Para contribuir:
+- **server**
+    - Nós nesse grupo devem executar apenas workload crítico do kubernetes. Deve ser aplicado taint a fim de garantir o comportamento descrito.
+- **worker**
+    - Nós nesse grupo devem executar apenas workloads não críticos. Deve ser aplicado taint a fim de garantir o comportamento descrito.
+- **hybrid**
+    - Nós nesse grupo podem executar workloads sem restrição de criticidade.
 
-1. Faça um fork do repositório.
-2. Crie uma branch para sua feature ou correção de bug:
-   ```bash
-   git checkout -b minha-feature
-   ```
-3. Commit suas alterações:
-   ```bash
-   git commit -m "Descrição da minha feature"
-   ```
-4. Envie as alterações:
-   ```bash
-   git push origin minha-feature
-   ```
-5. Abra um pull request.
+## Fluxo Monitoração
 
-## ⚖️ Licença
+### Ferramentas
 
-Este projeto é licenciado sob os termos da [Licença MIT](./LICENSE).
+- **Prometheus**
+    - Agregação de métricas
+- **cAdvisor**
+    - Coleta de métricas de conteiners docker
+- **Fluent Bit**
+    - Coleta de logs
+- **Opensearch**
+    - Agregação de logs do Fluent Bit
+- **Grafana**
+    - Visualização de dados do Prometheus e OpenSearch
+
+## Embasamento do Projeto
+
+O projeto será embasado nas documentações descritas nos links abaixo.
+
+- https://kube-vip.io/docs/usage/k3s/
+- https://ranchermanager.docs.rancher.com/how-to-guides/new-user-guides/kubernetes-cluster-setup/k3s-for-rancher
+- https://docs.ansible.com/ansible/latest/index.html
+- https://longhorn.io/docs/

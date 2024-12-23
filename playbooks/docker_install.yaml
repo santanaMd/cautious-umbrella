@@ -1,0 +1,55 @@
+---
+- name: Docker Install
+  hosts: docker-node
+  become: true
+  tasks:
+
+    - name: Update repo
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install Dependencies
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+
+    - name: Create keyrings Directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download GPT keyrings
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    - name: Alter keyrings/docker.asc permissions
+      ansible.builtin.file:
+        path: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    - name: Add APT Sources
+      ansible.builtin.lineinfile:
+        regexp: "^deb \\[arch={{ ansible_architecture | regex_replace('aarch64', 'arm64') }} signed-by=/etc/apt/keyrings/docker.asc\\] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable$"
+        line: "deb [arch={{ ansible_architecture | regex_replace('aarch64', 'arm64') }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
+        path: /etc/apt/sources.list.d/docker.list
+        state: present
+        mode: '0644'
+
+    - name: Update repo
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present

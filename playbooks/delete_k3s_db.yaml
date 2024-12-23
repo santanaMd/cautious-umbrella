@@ -1,0 +1,24 @@
+---
+- name: Docker Install
+  hosts: k3s-database
+  vars_files:
+  - ../values.yaml
+  - ../secrets/k3s_database.yaml
+  tasks:
+
+    - name: Stop and remove MySQL container
+      community.docker.docker_container:
+        name: "{{ k3s_database.container_name }}"
+        state: absent
+
+    - name: Remove MySQL data directory
+      ansible.builtin.file:
+        path: "{{ k3s_database.persistence_data_path }}"
+        state: absent
+      become: true
+
+    - name: Remove MySQL certificates directory
+      ansible.builtin.file:
+        path: "{{ k3s_database.persistence_cert_path }}"
+        state: absent
+      become: true

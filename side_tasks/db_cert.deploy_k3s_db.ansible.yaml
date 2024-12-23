@@ -1,0 +1,194 @@
+# Criação de certificado SSL para o banco de dados do K3s
+
+---
+
+
+#
+##
+### Criação de Pastas
+##
+#
+
+- name: Criar diretório para dados MySQL com UID e GID específicos
+  ansible.builtin.file:
+    path: "{{ k3s_database.persistence_data_path }}"
+    state: directory
+    mode: '0755'  # Ajustado para 'r-x' para grupo e outros
+    owner: 1234  # Define o UID
+    group: 1234  # Define o GID
+  become: true
+
+- name: Criar diretório para certificados com UID e GID específicos
+  ansible.builtin.file:
+    path: "{{ k3s_database.persistence_cert_path }}"
+    state: directory
+    mode: '0755'  # Ajustado para 'r-x' para grupo e outros
+    owner: 1234  # Define o UID
+    group: 1234  # Define o GID
+  become: true
+
+#
+##
+### Criação de certificados
+##
+#
+
+- name: Gerar chave privada da CA
+  community.crypto.openssl_privatekey:
+    path: "{{ k3s_database.persistence_cert_path }}/ca-key.pem"
+    size: 2048
+    type: RSA
+  become: true
+
+- name: Gerar certificado da CA
+  community.crypto.x509_certificate:
+    path: "{{ k3s_database.persistence_cert_path }}/ca.pem"
+    privatekey_path: "{{ k3s_database.persistence_cert_path }}/ca-key.pem"
+    provider: selfsigned
+    selfsigned_digest: sha256
+    selfsigned_not_before: "{{ lookup('pipe', 'date -u +%Y%m%d%H%M%SZ') }}"
+    selfsigned_not_after: "{{ lookup('pipe', 'date -u -d \"+10 years\" +%Y%m%d%H%M%SZ') }}"
+    selfsigned_create_subject_key_identifier: always_create
+  become: true
+
+- name: Gerar chave privada do servidor
+  community.crypto.openssl_privatekey:
+    path: "{{ k3s_database.persistence_cert_path }}/server-key.pem"
+    size: 2048
+    type: RSA
+  become: true
+
+- name: Gerar CSR do servidor
+  community.crypto.openssl_csr:
+    path: "{{ k3s_database.persistence_cert_path }}/server.csr"
+    privatekey_path: "{{ k3s_database.persistence_cert_path }}/server-key.pem"
+    common_name: MySQL_Server
+  become: true
+
+- name: Assinar certificado do servidor com a CA
+  community.crypto.x509_certificate:
+    path: "{{ k3s_database.persistence_cert_path }}/server-cert.pem"
+    csr_path: "{{ k3s_database.persistence_cert_path }}/server.csr"
+    ownca_path: "{{ k3s_database.persistence_cert_path }}/ca.pem"
+    ownca_privatekey_path: "{{ k3s_database.persistence_cert_path }}/ca-key.pem"
+    provider: ownca
+    ownca_not_before: "+0s"
+    ownca_not_after: "+3650d"
+    ownca_digest: sha256
+  become: true
+
+- name: Gerar chave privada do cliente
+  community.crypto.openssl_privatekey:
+    path: "{{ k3s_database.persistence_cert_path }}/client-key.pem"
+    size: 2048
+    type: RSA
+  become: true
+
+- name: Gerar CSR do cliente
+  community.crypto.openssl_csr:
+    path: "{{ k3s_database.persistence_cert_path }}/client.csr"
+    privatekey_path: "{{ k3s_database.persistence_cert_path }}/client-key.pem"
+    common_name: MySQL_Client
+  become: true
+
+- name: Assinar certificado do cliente com a CA
+  community.crypto.x509_certificate:
+    path: "{{ k3s_database.persistence_cert_path }}/client-cert.pem"
+    csr_path: "{{ k3s_database.persistence_cert_path }}/client.csr"
+    ownca_path: "{{ k3s_database.persistence_cert_path }}/ca.pem"
+    ownca_privatekey_path: "{{ k3s_database.persistence_cert_path }}/ca-key.pem"
+    provider: ownca
+    ownca_not_before: "+0s"
+    ownca_not_after: "+3650d"
+    ownca_digest: sha256
+  become: true
+
+
+
+#
+##
+### Validação dos certificados
+##
+#
+
+- name: Verificar a existência dos certificados
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  with_items:
+    - "{{ k3s_database.persistence_cert_path }}/server-cert.pem"
+    - "{{ k3s_database.persistence_cert_path }}/server-key.pem"
+    - "{{ k3s_database.persistence_cert_path }}/ca.pem"
+  register: cert_files_status
+  become: true
+
+- name: Validar se todos os certificados existem
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "O certificado '{{ item.item }}' não foi encontrado no caminho especificado."
+    success_msg: "O certificado '{{ item.item }}' está presente."
+  with_items: "{{ cert_files_status.results }}"
+
+- name: Validar o certificado do servidor
+  ansible.builtin.command:
+    cmd: "openssl x509 -in {{ k3s_database.persistence_cert_path }}/server-cert.pem -text -noout"
+  register: server_cert_check
+  ignore_errors: true
+  become: true
+
+- name: Validar a chave privada do servidor
+  ansible.builtin.command:
+    cmd: "openssl rsa -in {{ k3s_database.persistence_cert_path }}/server-key.pem -check"
+  register: server_key_check
+  ignore_errors: true
+  become: true
+
+- name: Exibir erros nos certificados
+  ansible.builtin.debug:
+    msg: "Erro na validação do certificado: {{ server_cert_check.stderr }}"
+  when: server_cert_check.failed or server_key_check.failed
+
+
+
+#
+##
+### Validação da correspondência entre chave privada e cert
+##
+#
+
+- name: Verificar se a chave privada do servidor existe
+  ansible.builtin.stat:
+    path: "{{ k3s_database.persistence_cert_path }}/server-key.pem"
+  register: server_key_stat
+  become: true
+
+- name: Verificar se o certificado do servidor existe
+  ansible.builtin.stat:
+    path: "{{ k3s_database.persistence_cert_path }}/server-cert.pem"
+  register: server_cert_stat
+  become: true
+
+- name: Garantir que a chave privada e o certificado existem
+  ansible.builtin.assert:
+    that:
+      - server_key_stat.stat.exists
+      - server_cert_stat.stat.exists
+    fail_msg: "A chave privada ou o certificado do servidor não foram encontrados no caminho especificado."
+    success_msg: "A chave privada e o certificado do servidor estão presentes."
+
+
+
+#
+##
+### Garante ownership dos arquivos
+##
+#
+
+- name: Ensure ownership of k3s_database.root_persistence is set to 1234:1234
+  ansible.builtin.file:
+    path: "{{ k3s_database.root_persistence }}"
+    owner: "1234"
+    group: "1234"
+    recurse: true
+  when: k3s_database.root_persistence is defined
+  become: true
