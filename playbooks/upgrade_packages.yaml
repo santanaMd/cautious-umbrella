@@ -1,18 +1,12 @@
-#
-#
-# -- Baseado no tutorial do site
-# -- Based on the tutorial from the website
-#
-# https://www.cyberciti.biz/faq/ansible-apt-update-all-packages-on-ubuntu-debian-linux/
-#
-#
 ---
-
 - name: Upgrade Packages
   become: true
   hosts: all
+  vars_files:
+    - ../../secrets/credentials.yml
+  vars:
+    ansible_become_password: "{{ become_password }}"
   tasks:
-
     - name: Upgrade all APT packages
       ansible.builtin.apt:
         cache_valid_time: 3600

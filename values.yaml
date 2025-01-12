@@ -1,8 +1,2 @@
-k3s_version: "v1.24.10+k3s1"
-
-k3s_database:
-  default_image: 'mysql'
-  container_name: 'k3s_mysql'
-  root_persistence: '/media/internal_storage/k3s_database'
-  persistence_data_path: '/media/internal_storage/k3s_database/data'
-  persistence_cert_path: '/media/internal_storage/k3s_database/cert'
+KUBE_VIP_VERSION: 'v0.8.7'
+K3S_VERSION: 'v1.31.4+k3s1'
