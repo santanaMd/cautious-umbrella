@@ -145,11 +145,17 @@
       ansible.builtin.shell: |
         curl -sfL https://get.k3s.io | sh -
       environment:
-        INSTALL_K3S_EXEC: "--disable=servicelb --disable=traefik --tls-san={{ VIP_ADDRESS }} --write-kubeconfig-mode=644 --cluster-init"
+        INSTALL_K3S_EXEC: "--disable servicelb --disable traefik --tls-san {{ VIP_ADDRESS }} --write-kubeconfig-mode 644 --cluster-init"
         INSTALL_K3S_VERSION: "{{ K3S_VERSION }}"
       when: inventory_hostname == groups['hybrid'][0]
       become: true
     
+
+    #
+    ##
+    ### Configurara arquivo kubeconfig
+    ##
+    #
   
     - name: Criar diretório .kube no diretório home do usuário
       ansible.builtin.file:
@@ -174,8 +180,37 @@
         path: /home/{{ ansible_user }}/.kube/config
         regexp: 'server: https://127.0.0.1:6443'
         replace: 'server: https://{{ VIP_ADDRESS }}:6443'
-      become: true
       when: inventory_hostname == groups['hybrid'][0]
+
+    - name: Atualizar o nome do cluster no kubeconfig
+      ansible.builtin.replace:
+        path: /home/{{ ansible_user }}/.kube/config
+        regexp: 'default'
+        replace: 'kojiki'
+      when: inventory_hostname == groups['hybrid'][0]
+
+    - name: Obter o conteúdo do kubeconfig do host de origem
+      ansible.builtin.slurp:
+        src: /home/{{ ansible_user }}/.kube/config
+      register: kubeconfig_content
+      when: inventory_hostname == groups['hybrid'][0]
+      run_once: true
+
+    - name: Configurar conteúdo do kubeconfig como variável global
+      ansible.builtin.set_fact:
+        global_kubeconfig_content: "{{ kubeconfig_content.content }}"
+      when: inventory_hostname == groups['hybrid'][0]
+      run_once: true
+
+    - name: Distribuir kubeconfig para outros hosts
+      ansible.builtin.copy:
+        content: "{{ global_kubeconfig_content | b64decode }}"
+        dest: /home/{{ ansible_user }}/.kube/config
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      become: true
+      when: inventory_hostname != groups['hybrid'][0]
 
 
     #
@@ -206,7 +241,27 @@
       ansible.builtin.shell: |
         curl -sfL https://get.k3s.io | K3S_TOKEN={{ global_k3s_token }} sh -s - server \
         --server https://{{ main_node_ip }}:6443 \
+        --disable servicelb \
+        --disable traefik \
         --write-kubeconfig-mode 644 \
         --tls-san={{ VIP_ADDRESS }}
       when: inventory_hostname != groups['hybrid'][0]
       become: true
+
+
+    #
+    ##
+    ### Configurar Kube-Vip Cloud Controller
+    ##
+    #
+
+    - name: Aplicar regras de RBAC
+      ansible.builtin.shell: |
+        kubectl apply -f https://kube-vip.io/manifests/rbac.yaml
+      when: inventory_hostname == groups['hybrid'][0]
+
+    - name: Create Kube-Vip Configmap
+      ansible.builtin.shell: |
+        kubectl create configmap -n kube-system kubevip \
+        --from-literal range-global={{ KUBE_VIP_RANGE_GLOBAL }}
+      when: inventory_hostname == groups['hybrid'][0]
