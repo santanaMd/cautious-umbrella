@@ -8,7 +8,7 @@ O nome é aleatório e foi gerado pelo próprio GitHub, eu gostei porque esse pr
 
 São simples 3 motivos:
 1. Por educação. Acredito que só aprendemos fazendo e errando;
-2. Porque eu moro no brasil e cloud não é tão barata quanto na gringa;
+2. Porque eu moro no Brasil e cloud não é tão barata quanto na gringa;
 3. Porque é divertido.
 
 ## Para que serve
