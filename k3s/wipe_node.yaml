@@ -1,10 +1,11 @@
 ---
-- name: Uninstall K3s and Kube-vip
+- name: Install K3s and Configure Kube-vip
   hosts: all
-  become: true
   vars_files:
     - ../secrets/credentials.yml
     - ../secrets/cluster_values.yml
+  vars:
+    ansible_become_password: "{{ become_password }}"
   tasks:
 
     #
@@ -45,6 +46,7 @@
       ansible.builtin.file:
         path: "{{ item.path }}"
         state: absent
+      become: true
       loop: "{{ arquivos_encontrados.files }}"
 
     - name: Limpar endereços IP da interface de loopback

@@ -1,10 +1,11 @@
 ---
-- name: Install K3s and Configure Kube-vip
-  hosts: all
-  become: true
+- name: Join Nodes
+  hosts: "all"
   vars_files:
     - ../secrets/credentials.yml
     - ../secrets/cluster_values.yml
+  vars:
+    ansible_become_password: "{{ become_password }}"
   tasks:
 
     #
@@ -25,6 +26,7 @@
         name:
           - curl
           - iproute2
+          - nfs-common
         state: present
         update_cache: yes
         cache_valid_time: 3600
@@ -37,56 +39,6 @@
           - python3-openshift
           - python3-yaml
         state: present
-
-    #
-    ##
-    ### Limpeza do ambiente
-    ##
-    #
-
-    - name: Check if K3s uninstall script exists
-      ansible.builtin.stat:
-        path: /usr/local/bin/k3s-uninstall.sh
-      register: k3s_uninstall_script
-
-    - name: Run K3s uninstall script if it exists
-      ansible.builtin.shell: /usr/local/bin/k3s-uninstall.sh
-      when: k3s_uninstall_script.stat.exists
-      become: true
-
-    - name: Remover o diretório /var/lib/rancher
-      ansible.builtin.file:
-        path: /var/lib/rancher
-        state: absent
-      become: true
-
-    - name: Remover o diretório /etc/rancher
-      ansible.builtin.file:
-        path: /etc/rancher
-        state: absent
-      become: true
-
-    - name: Encontrar todos os arquivos no diretório ~/.kube/
-      ansible.builtin.find:
-        paths: /home/{{ ansible_user }}/.kube/
-        file_type: file
-      register: arquivos_encontrados
-
-    - name: Remover os arquivos encontrados no diretório ~/.kube/
-      ansible.builtin.file:
-        path: "{{ item.path }}"
-        state: absent
-      loop: "{{ arquivos_encontrados.files }}"
-
-    - name: Limpar endereços IP da interface de loopback
-      ansible.builtin.command:
-        cmd: ip addr flush dev lo
-      become: true
-
-    - name: Adicionar endereço IP padrão à interface de loopback
-      ansible.builtin.command:
-        cmd: ip addr add 127.0.0.1/8 dev lo
-      become: true
 
     #
     ##
@@ -103,6 +55,7 @@
         state: directory
         mode: '0755'
       become: true
+      when: inventory_hostname != groups['hybrid'][0]
 
 
     # 2. Download manifest RBAC Kube-Vip
@@ -113,15 +66,17 @@
         dest: /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
         mode: '0644'
       become: true
+      when: inventory_hostname != groups['hybrid'][0]
 
 
     # 3. Geração do Kube-Vip DaemonSet
 
     - name: Gerar Kube-Vip DaemonSet
       ansible.builtin.shell: |
+        echo "---" >> /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml && \
         docker run --network host --rm ghcr.io/kube-vip/kube-vip:$KVVERSION manifest daemonset \
-        --interface $INTERFACE \
         --address $VIP \
+        --autoInterface \
         --inCluster \
         --taint \
         --controlplane \
@@ -131,32 +86,18 @@
         >> /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
       environment:
         KVVERSION: "{{ KUBE_VIP_VERSION }}"
-        INTERFACE: "{{ NETWORK_INTERFACE }}"
+        INTERFACE: "{{ ansible_default_ipv4.interface }}"
         VIP: "{{ VIP_ADDRESS }}"
-
-
-    #
-    ##
-    ### Instalação K3s
-    ##
-    #
-
-    - name: Install K3s on the master node
-      ansible.builtin.shell: |
-        curl -sfL https://get.k3s.io | sh -
-      environment:
-        INSTALL_K3S_EXEC: "--disable servicelb --disable traefik --tls-san {{ VIP_ADDRESS }} --write-kubeconfig-mode 644 --cluster-init"
-        INSTALL_K3S_VERSION: "{{ K3S_VERSION }}"
-      when: inventory_hostname == groups['hybrid'][0]
+      when: inventory_hostname != groups['hybrid'][0]
       become: true
-    
+      #--interface $INTERFACE \
 
     #
     ##
     ### Configurara arquivo kubeconfig
     ##
     #
-  
+
     - name: Criar diretório .kube no diretório home do usuário
       ansible.builtin.file:
         path: /home/{{ ansible_user }}/.kube
@@ -164,37 +105,11 @@
         mode: '0755'
       become: true
 
-    - name: Copiar o arquivo kubeconfig para o diretório .kube
-      ansible.builtin.copy:
-        src: /etc/rancher/k3s/k3s.yaml
-        dest: /home/{{ ansible_user }}/.kube/config
-        remote_src: yes
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
-      become: true
-      when: inventory_hostname == groups['hybrid'][0]
-
-    - name: Atualizar o servidor no kubeconfig
-      ansible.builtin.replace:
-        path: /home/{{ ansible_user }}/.kube/config
-        regexp: 'server: https://127.0.0.1:6443'
-        replace: 'server: https://{{ VIP_ADDRESS }}:6443'
-      when: inventory_hostname == groups['hybrid'][0]
-
-    - name: Atualizar o nome do cluster no kubeconfig
-      ansible.builtin.replace:
-        path: /home/{{ ansible_user }}/.kube/config
-        regexp: 'default'
-        replace: 'kojiki'
-      when: inventory_hostname == groups['hybrid'][0]
-
     - name: Obter o conteúdo do kubeconfig do host de origem
       ansible.builtin.slurp:
         src: /home/{{ ansible_user }}/.kube/config
       register: kubeconfig_content
       when: inventory_hostname == groups['hybrid'][0]
-      run_once: true
 
     - name: Configurar conteúdo do kubeconfig como variável global
       ansible.builtin.set_fact:
@@ -211,7 +126,6 @@
         mode: '0644'
       become: true
       when: inventory_hostname != groups['hybrid'][0]
-
 
     #
     ##
@@ -251,17 +165,14 @@
 
     #
     ##
-    ### Configurar Kube-Vip Cloud Controller
+    ### Desabilitar k3s-agent
     ##
     #
 
-    - name: Aplicar regras de RBAC
-      ansible.builtin.shell: |
-        kubectl apply -f https://kube-vip.io/manifests/rbac.yaml
-      when: inventory_hostname == groups['hybrid'][0]
-
-    - name: Create Kube-Vip Configmap
-      ansible.builtin.shell: |
-        kubectl create configmap -n kube-system kubevip \
-        --from-literal range-global={{ KUBE_VIP_RANGE_GLOBAL }}
-      when: inventory_hostname == groups['hybrid'][0]
+    - name: Desabilitar k3s-agent
+      ansible.builtin.service:
+        name: k3s-agent
+        enabled: no
+        state: stopped
+      when: inventory_hostname != groups['hybrid'][0]
+      become: true

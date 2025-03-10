@@ -1,0 +1,73 @@
+- name: Deploy pihole
+  hosts: "{{ groups['hybrid'][0] }}"
+  vars_files:
+    - ../secrets/cluster_values.yml
+  tasks:
+
+    - name: Adicionar o repositório Helm pihole
+      community.kubernetes.helm_repository:
+        name: mojo2600
+        repo_url: https://mojo2600.github.io/pihole-kubernetes/
+        state: present
+        force_update: true
+
+    - name: Instalar o chart pihole usando Helm
+      community.kubernetes.helm:
+        name: pihole
+        chart_ref: mojo2600/pihole
+        namespace: pihole
+        create_namespace: true
+        release_state: present
+        chart_version: "{{ pihole_chart_version }}"
+        values:
+
+          #DNS1: "1.1.1.1"
+          #DNS2: "8.8.8.8"
+
+          replicaCount: 1
+          maxSurge: 3
+          maxUnavailable: 1
+
+          monitoring:
+            podMonitor:
+              enabled: "true"
+
+          persistentVolumeClaim:
+            enabled: "true"
+            size: "2Gi"
+
+          virtualHost: "pihole.{{ domain }}"
+
+          serviceDns:
+            loadBalancerIP: "{{ pihole_loadbalancer_ip }}"
+            type: LoadBalancer
+
+    - name: Criar Ingress para o pihole
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: pihole-web
+            namespace: pihole
+            annotations:
+              kubernetes.io/ingress.class: "nginx"
+              cert-manager.io/cluster-issuer: letsencrypt-prod
+              nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          spec:
+            rules:
+              - host: "pihole.{{ domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: pihole-web
+                          port:
+                            number: 80
+            tls:
+              - hosts:
+                - "pihole.{{ domain }}"
+                secretName: pihole-cert-manager-secret

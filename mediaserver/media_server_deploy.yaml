@@ -1,0 +1,69 @@
+- name: Deploy Media Server
+  hosts: "{{ groups['hybrid'][0] }}"
+  vars_files:
+    - ../../secrets/cluster_values.yml
+  tasks:
+
+  # qBitTorrent
+  # Jacket
+  # Radarr
+  # Sonarr
+  # Lidarr
+  # Readarr
+  # Bazarr
+  # Prowlarr
+  # Jellyfin
+
+
+    #
+    ##
+    ### qBitTorrent
+    ##
+    #
+
+    - name: Adicionar o repositório Helm qBitTorrent
+      community.kubernetes.helm_repository:
+        name: k8s-at-home
+        repo_url: https://k8s-at-home.com/charts/
+        state: present
+        force_update: true
+
+    - name: Instalar o chart qBitTorrent usando Helm
+      community.kubernetes.helm:
+        name: qbittorrent
+        chart_ref: k8s-at-home/qbittorrent
+        namespace: media-server
+        create_namespace: true
+        release_state: present
+        chart_version: "{{ qbit_chart_version }}"
+        values:
+
+          env:
+            TZ: "America/Sao_Paulo"
+
+          persistence:
+
+            # Configuration files
+            config:
+              enabled: "true"
+              retain: "true"
+              storageClass: "longhorn"
+              accessMode: ReadWriteOnce
+              size: "5Gi"
+
+            # Optional - Download location - Allows dedicated volume for storage of downloaded files.
+            downloads:
+              enabled: "true"
+              mountPath: /downloads
+              storageClass: "longhorn"
+              accessMode: ReadWriteOnce
+              size: "500Gi"
+
+            # Optional - Allows linking to an existing media library scraping location.
+            media:
+              enabled: "true"
+              mountPath: /media
+              storageClass: "longhorn"
+              accessMode: ReadWriteOnce
+              size: "10Gi"
+
