@@ -1,0 +1,135 @@
+- name: Deploy Apache Superset
+  hosts: "{{ groups['hybrid'][0] }}"
+  vars_files:
+    - ../secrets/cluster_values.yml
+  tasks:
+
+    #
+    ##
+    ### Apache superset
+    ##
+    #
+
+    - name: Gerar uma SECRET_KEY usando o plugin community.general.random_string
+      ansible.builtin.set_fact:
+        superset_secret_key: "{{ lookup('community.general.random_string', length=32, charset='ascii_letters+digits') }}"
+
+    - name: Adicionar o repositório Helm superset
+      community.kubernetes.helm_repository:
+        name: superset
+        repo_url: http://apache.github.io/superset/
+        state: present
+        force_update: true
+
+    - name: Instalar o chart superset usando Helm
+      community.kubernetes.helm:
+        name: superset
+        chart_ref: superset/superset
+        namespace: data-lab
+        create_namespace: true
+        release_state: present
+        chart_version: "{{ superset_datalab_chart_version }}"
+        values:
+
+          runAsUser: "{{ superset_datalab_run_as_user }}"
+
+          bootstrapScript: |
+            #!/bin/bash
+            pip install psycopg2-binary==2.9.6 \
+              sqlalchemy-bigquery==1.6.1 \
+              elasticsearch-dbapi==0.2.5 &&\
+            if [ ! -f ~/bootstrap ]; then echo "Running Superset with uid {{ superset_datalab_run_as_user }}" > ~/bootstrap; fi
+
+          extraSecretEnv:
+            SUPERSET_SECRET_KEY: "{{ superset_secret_key }}"
+
+          supersetNode:
+            replicas:
+              enabled: true
+              replicaCount: 1
+            autoscaling:
+              enabled: true
+              minReplicas: 1
+              maxReplicas: 15
+              targetCPUUtilizationPercentage: 95
+              targetMemoryUtilizationPercentage: 80
+            podDisruptionBudget:
+              enabled: false
+              minAvailable: 1
+            resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 100m
+                memory: 128Mi
+
+          supersetWorker:
+            replicas:
+              enabled: true
+              replicaCount: 1
+            autoscaling:
+              enabled: true
+              minReplicas: 1
+              maxReplicas: 30
+              targetCPUUtilizationPercentage: 95
+              targetMemoryUtilizationPercentage: 80
+            podDisruptionBudget:
+              enabled: false
+              minAvailable: 1
+            resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 100m
+                memory: 128Mi
+
+          postgresql:
+            image:
+                tag: "{{ superset_datalab_postgres_image_tag }}"
+            primary:
+              persistence:
+                enabled: true
+                storageClass: "longhorn"
+                accessModes: ["ReadWriteOnce"]
+            service:
+              ports:
+                postgresql: "5432"
+
+          redis:
+            master:
+              persistence:
+                enabled: true
+                storageClass: "longhorn"
+                accessModes: ["ReadWriteOnce"]
+
+    - name: Criar Ingress para o superset
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: superset-web
+            namespace: data-lab
+            annotations:
+              kubernetes.io/ingress.class: "nginx"
+              cert-manager.io/cluster-issuer: letsencrypt-prod
+              nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          spec:
+            rules:
+              - host: "superset.{{ domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: superset
+                          port:
+                            number: 8088
+            tls:
+              - hosts:
+                - "superset.{{ domain }}"
+                secretName: superset-cert-manager-secret

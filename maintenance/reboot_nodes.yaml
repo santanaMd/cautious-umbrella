@@ -1,0 +1,10 @@
+---
+- name: Restart all K3s nodes
+  hosts: all
+  become: true
+  vars_files:
+    - ../secrets/credentials.yml
+  tasks:
+    - name: Restart the system
+      ansible.builtin.reboot:
+        reboot_timeout: 300

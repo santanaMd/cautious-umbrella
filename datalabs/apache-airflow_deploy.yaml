@@ -1,0 +1,75 @@
+#
+    ##
+    ### Apache airflow
+    ##
+    #
+
+    - name: Gerar uma WEBSERVER_SECRET_KEY usando o plugin community.general.random_string
+      ansible.builtin.set_fact:
+        airflow_secret_key: "{{ lookup('community.general.random_string', length=32, charset='ascii_letters+digits') }}"
+
+    - name: Criar Secret para WEBSERVER_SECRET_KEY
+      kubernetes.core.k8s:
+        state: present
+        namespace: data-lab
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: airflow-webserver-secret-key
+          data:
+            webserver-secret-key: "{{ airflow_secret_key | b64encode }}"
+
+    - name: Adicionar o repositório Helm airflow
+      community.kubernetes.helm_repository:
+        name: apache-airflow
+        repo_url: https://airflow.apache.org/
+        state: present
+        force_update: true
+
+    - name: Instalar o chart airflow usando Helm
+      community.kubernetes.helm:
+        name: airflow
+        chart_ref: apache-airflow/airflow 
+        namespace: data-lab
+        create_namespace: true
+        release_state: present
+        chart_version: "{{ airflow_datalab_chart_version }}"
+        values:
+          workers:
+            hpa:
+              enabled: true
+              minReplicaCount: 1
+              maxReplicaCount: 10
+          webserverSecretKey: webserver-secret-key
+          webserverSecretKeySecretName: airflow-webserver-secret-key
+              
+    - name: Criar Ingress para o airflow
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: airflow-web
+            namespace: data-lab
+            annotations:
+              kubernetes.io/ingress.class: "nginx"
+              cert-manager.io/cluster-issuer: letsencrypt-prod
+              nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          spec:
+            rules:
+              - host: "airflow.{{ domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: airflow-webserver
+                          port:
+                            number: 8080
+            tls:
+              - hosts:
+                - "airflow.{{ domain }}"
+                secretName: airflow-cert-manager-secret

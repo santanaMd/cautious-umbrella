@@ -1,0 +1,117 @@
+- name: Deploy NextCloud
+  hosts: "{{ groups['hybrid'][0] }}"
+  vars_files:
+    - ../secrets/cluster_values.yml
+  tasks:
+
+    #
+    ##
+    ### Adicionar repositório Helm
+    ##
+    #
+
+    - name: Adicionar o repositório Helm NextCloud
+      community.kubernetes.helm_repository:
+        name: nextcloud
+        repo_url: https://nextcloud.github.io/helm/
+        state: present
+        force_update: true
+
+
+    #
+    ##
+    ### Instalar o NextCloud
+    ##
+    #
+
+    - name: Instalar o chart NextCloud usando Helm
+      community.kubernetes.helm:
+        name: nextcloud
+        chart_ref: nextcloud/nextcloud
+        namespace: nextcloud
+        create_namespace: true
+        release_state: present
+        chart_version: "{{ nextcloud_chart_version }}"
+        values:
+          # HPA settings
+          hpa:
+            enabled: true
+            cputhreshold: 60
+            minPods: 1
+            maxPods: 6
+          # General Setting
+          phpClientHttpsFix:
+            enabled: "true"
+          cronjob:
+            enabled: "true"
+          nextcloud:
+            host: "nextcloud.{{ domain }}"
+            trustedDomains: ["nextcloud.{{ domain }}"]
+
+          # Nextcloud Database
+          internalDatabase:
+            enabled: "false"
+          postgresql:
+            enabled: "true"
+            primary:
+              persistence:
+                enabled: "true"
+
+          # Persistence System
+          persistence:
+            enabled: "true"
+            storageClass: "longhorn"
+            accessMode: "ReadWriteOnce"
+            size: "30Gi"
+          
+          # Persistence Data
+            nextcloudData:
+              enabled: "true"
+              storageClass: "longhorn"
+              accessMode: "ReadWriteOnce"
+              size: "300Gi"
+            
+          # Metrics
+          metrics:
+            serviceMonitor:
+              enabled: "true"
+              namespace: "monitoring"
+          
+          
+
+    #
+    ##
+    ### Criar o ingress
+    ##
+    #
+
+    - name: Criar Ingress para o Nextcloud
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: nextcloud-web
+            namespace: nextcloud
+            annotations:
+              kubernetes.io/ingress.class: "nginx"
+              cert-manager.io/cluster-issuer: letsencrypt-prod
+              nginx.ingress.kubernetes.io/ssl-redirect: "true"
+              nginx.ingress.kubernetes.io/proxy-body-size: 8G
+          spec:
+            rules:
+              - host: "nextcloud.{{ domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: nextcloud
+                          port:
+                            number: 80
+            tls:
+              - hosts:
+                - "nextcloud.{{ domain }}"
+                secretName: nextcloud-cert-manager-secret
