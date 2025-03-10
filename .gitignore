@@ -1,4 +1,4 @@
-secrets/
-inventory.ini
+**/secrets/
+**/inventory.ini
 k3s_inventory.ini
 .vscode/
