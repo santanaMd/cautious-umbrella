@@ -104,7 +104,7 @@
           extraEnv:
             WEBHOOK_TUNNEL_URL: "https://n8n.dndelion.io/"
             WEBHOOK_URL: "https://n8n.dndelion.io/"
-            N8N_ENCRYPTION_KEY: "a7AK05I5q4dT/fVbTDaFbii9qhhv/YPwhDzBGiPZbiY="
+            N8N_ENCRYPTION_KEY: "..."
             #N8N_DISABLE_PRODUCTION_MAIN_PROCESS: true
             DEBUG: "*"
             EXECUTIONS_MODE: "queue"
