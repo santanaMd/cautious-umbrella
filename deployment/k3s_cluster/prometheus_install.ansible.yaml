@@ -1,0 +1,98 @@
+#
+##
+### Adicionar repositório Helm
+##
+#
+
+- name: Adicionar o repositório Helm Kube Prometheus Stack
+  community.kubernetes.helm_repository:
+    name: prometheus-community
+    repo_url: https://prometheus-community.github.io/helm-charts
+    state: present
+    force_update: true
+
+#
+##
+### Instalar o Kube Prometheus Stack
+##
+#
+
+- name: Instalar o chart Kube Prometheus Stack usando Helm
+  community.kubernetes.helm:
+    name: prometheus-community
+    chart_ref: prometheus-community/kube-prometheus-stack
+    namespace: monitoring
+    create_namespace: true
+    release_state: present
+    chart_version: "{{ kube_prometheus_chart_version }}"
+    values:
+      grafana:
+        persistence:
+          enabled: true
+          type: sts
+          storageClassName: "local-path"
+          accessModes:
+            - ReadWriteOnce
+          size: 15Gi
+          finalizers:
+            - kubernetes.io/pvc-protection
+      prometheus:
+        prometheusSpec:
+          storageSpec:
+            volumeClaimTemplate:
+              spec:
+                storageClassName: "local-path"
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 30Gi
+      alertmanager:
+        alertmanagerSpec:
+            storage: 
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: "local-path"
+                  accessModes: 
+                    - "ReadWriteOnce"
+                  resources:
+                      requests:
+                        storage: 15Gi
+
+
+#
+##
+### Criar o Traefik Gateway
+##
+#
+
+- name: Criar Ingress para o Grafana com Traefik 3
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: ingress-grafana-monitoring
+        namespace: monitoring
+        annotations:
+          kubernetes.io/ingress.class: "traefik"
+          cert-manager.io/cluster-issuer: letsencrypt-prod
+          traefik.ingress.kubernetes.io/router.entrypoints: websecure
+          traefik.ingress.kubernetes.io/router.tls: "true"
+      spec:
+        rules:
+          - host: "grafana-monitoring.{{ domain_name }}"
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: prometheus-community-grafana
+                      port:
+                        number: 80
+        tls:
+          - hosts:
+              - "grafana-monitoring.{{ domain_name }}"
+            secretName: grafana-monitoring-cert-manager-secret

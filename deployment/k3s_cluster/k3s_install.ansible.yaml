@@ -1,0 +1,284 @@
+#
+##
+### Instalação de dependências
+##
+#
+
+- name: Atualizar o cache de pacotes
+  become: true
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Ensure required dependencies are installed
+  become: true
+  ansible.builtin.apt:
+    name:
+      - curl
+      - iproute2
+      - nfs-common
+    state: present
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Instalar pacotes necessários k8s
+  become: true
+  ansible.builtin.apt:
+    name:
+      - python3-kubernetes
+      - python3-yaml
+    state: present
+
+#
+##
+### Limpeza do ambiente
+##
+#
+
+- name: Check if K3s uninstall script exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s-uninstall.sh
+  register: k3s_uninstall_script
+
+- name: Run K3s uninstall script if it exists
+  ansible.builtin.shell: /usr/local/bin/k3s-uninstall.sh
+  when: k3s_uninstall_script.stat.exists
+  become: true
+
+- name: Remover o diretório /var/lib/rancher
+  ansible.builtin.file:
+    path: /var/lib/rancher
+    state: absent
+  become: true
+
+- name: Remover o diretório /etc/rancher
+  ansible.builtin.file:
+    path: /etc/rancher
+    state: absent
+  become: true
+
+- name: Encontrar todos os arquivos no diretório ~/.kube/
+  ansible.builtin.find:
+    paths: /home/{{ ansible_user }}/.kube/
+    file_type: file
+  register: arquivos_encontrados
+
+- name: Remover os arquivos encontrados no diretório ~/.kube/
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  become: true
+  loop: "{{ arquivos_encontrados.files }}"
+
+- name: Limpar endereços IP da interface de loopback
+  ansible.builtin.command:
+    cmd: ip addr flush dev lo
+  become: true
+
+- name: Adicionar endereço IP padrão à interface de loopback
+  ansible.builtin.command:
+    cmd: ip addr add 127.0.0.1/8 dev lo
+  become: true
+
+#
+##
+### Instalação Kube-Vip
+##
+#
+
+
+# 1. Criação da pasta de manifests
+
+- name: Criar o diretório /var/lib/rancher/k3s/server/manifests
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/server/manifests
+    state: directory
+    mode: '0755'
+  become: true
+
+
+# 2. Download manifest RBAC Kube-Vip
+
+- name: Baixar o arquivo RBAC do Kube-vip
+  ansible.builtin.get_url:
+    url: https://kube-vip.io/manifests/rbac.yaml
+    dest: /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
+    mode: '0644'
+  become: true
+
+
+# 3. Geração do Kube-Vip DaemonSet
+
+- name: Gerar Kube-Vip DaemonSet
+  ansible.builtin.shell: |
+    echo "---" >> /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml && \
+    docker run --network host --rm ghcr.io/kube-vip/kube-vip:$KVVERSION manifest daemonset \
+    --interface $INTERFACE \
+    --address $VIP \
+    --inCluster \
+    --taint \
+    --controlplane \
+    --services \
+    --arp \
+    --leaderElection \
+    >> /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
+  environment:
+    KVVERSION: "{{ KUBE_VIP_VERSION }}"
+    INTERFACE: "{{ NETWORK_INTERFACE }}"
+    VIP: "{{ VIP_ADDRESS }}"
+  become: true
+
+
+#
+##
+### Instalação K3s
+##
+#
+
+- name: Install K3s on the master node
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | sh -
+  environment:
+    INSTALL_K3S_EXEC: "--disable servicelb --disable traefik --tls-san {{ VIP_ADDRESS }} --write-kubeconfig-mode 644 --cluster-init"
+    INSTALL_K3S_VERSION: "{{ K3S_VERSION }}"
+  when: inventory_hostname == groups['hlab'][0]
+  become: true
+
+
+#
+##
+### Configurara arquivo kubeconfig
+##
+#
+
+- name: Criar diretório .kube no diretório home do usuário
+  ansible.builtin.file:
+    path: /home/{{ ansible_user }}/.kube
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Copiar o arquivo kubeconfig para o diretório .kube (hosts)
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /home/{{ ansible_user }}/.kube/config
+    remote_src: yes
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0644'
+  become: true
+  when: inventory_hostname == groups['hlab'][0]
+
+- name: Atualizar o servidor no kubeconfig
+  ansible.builtin.replace:
+    path: /home/{{ ansible_user }}/.kube/config
+    regexp: 'server: https://127.0.0.1:6443'
+    replace: 'server: https://{{ VIP_ADDRESS }}:6443'
+  when: inventory_hostname == groups['hlab'][0]
+  become: true
+
+- name: Atualizar o nome do cluster no kubeconfig
+  ansible.builtin.replace:
+    path: /home/{{ ansible_user }}/.kube/config
+    regexp: 'default'
+    replace: '{{ cluster_name }}'
+  when: inventory_hostname == groups['hlab'][0]
+  become: true
+
+- name: Obter o conteúdo do kubeconfig do host de origem
+  ansible.builtin.slurp:
+    src: /home/{{ ansible_user }}/.kube/config
+  register: kubeconfig_content
+  when: inventory_hostname == groups['hlab'][0]
+  run_once: true
+
+- name: Configurar conteúdo do kubeconfig como variável global
+  ansible.builtin.set_fact:
+    global_kubeconfig_content: "{{ kubeconfig_content.content }}"
+  when: inventory_hostname == groups['hlab'][0]
+  run_once: true
+
+- name: Distribuir kubeconfig para outros hosts
+  ansible.builtin.copy:
+    content: "{{ global_kubeconfig_content | b64decode }}"
+    dest: /home/{{ ansible_user }}/.kube/config
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0644'
+  become: true
+  when: inventory_hostname != groups['hlab'][0]
+
+- name: Copiar o arquivo kubeconfig para o diretório .kube (localhost)
+  ansible.builtin.fetch:
+    src: /home/{{ ansible_user }}/.kube/config
+    dest: ~/.kube/viltrum_config
+    flat: yes
+  run_once: true
+
+#
+##
+### Instalação dos nós restantes
+##
+#
+
+- name: Salvar o endereço IP do primeiro servidor
+  ansible.builtin.set_fact:
+    main_node_ip: "{{ ansible_default_ipv4.address }}"
+  when: inventory_hostname == groups['hlab'][0]
+  run_once: true
+
+- name: Get K3s node token
+  ansible.builtin.command:
+    cmd: cat /var/lib/rancher/k3s/server/token
+  register: k3s_token
+  when: inventory_hostname == groups['hlab'][0]
+  become: true
+
+- name: Set global K3s token variable
+  ansible.builtin.set_fact:
+    global_k3s_token: "{{ hostvars[groups['hlab'][0]].k3s_token.stdout }}"
+  run_once: true
+
+- name: Join additional nodes to the cluster
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | K3S_TOKEN={{ global_k3s_token }} sh -s - server \
+    --server https://{{ main_node_ip }}:6443 \
+    --disable servicelb \
+    --disable traefik \
+    --write-kubeconfig-mode 644 \
+    --tls-san={{ VIP_ADDRESS }}
+  when: inventory_hostname != groups['hlab'][0]
+  become: true
+
+
+#
+##
+### Desabilitar k3s-agent
+##
+#
+
+- name: Desabilitar k3s-agent
+  ansible.builtin.service:
+    name: k3s-agent
+    enabled: no
+    state: stopped
+  become: true
+  ignore_errors: yes
+
+
+#
+##
+### Configurar Kube-Vip Cloud Controller
+##
+#
+
+- name: Create Kube-Vip Configmap
+  ansible.builtin.shell: |
+    kubectl create configmap -n kube-system kubevip \
+    --from-literal range-global={{ KUBE_VIP_RANGE_GLOBAL }}
+  when: inventory_hostname == groups['hlab'][0]
+
+- name: Install kube-vip Cloud Provider
+  ansible.builtin.shell: |
+    kubectl apply -f https://raw.githubusercontent.com/kube-vip/kube-vip-cloud-provider/main/manifest/kube-vip-cloud-controller.yaml
+  when: inventory_hostname == groups['hlab'][0]

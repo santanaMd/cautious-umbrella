@@ -1,3 +1,4 @@
+**/.env
 **/secrets/
 **/inventory.ini
-.vscode/
+**/.vscode
