@@ -2,7 +2,9 @@
 
 ## O que é
 
-O nome é aleatório e foi gerado pelo próprio GitHub, eu gostei porque esse projeto vai ser um guarda-chuva para outras aplicações que vou hostear e projetos que quero tirar do papel. Também é algo cuidadoso, porque se vou criar um cluster quero que ele siga os mesmos padrões de um ambiente de produção.
+O nome é aleatório e foi gerado pelo próprio GitHub, eu gostei porque esse projeto vai ser um guarda-chuva para outras aplicações que vou hostear e projetos que quero tirar do papel. ~~Também é algo cuidadoso, porque se vou criar um cluster quero que ele siga os mesmos padrões de um ambiente de produção.~~
+
+Bem, a implementação em cluster é algo do passado. Estou migrando minha infra de arm64 para amd64. Estou com uma única máquina mais parruda, agora é um "cluster" single node.
 
 ## Por quê fazer
 
@@ -16,79 +18,35 @@ São simples 3 motivos:
 Meus objetivos também são 3:
 - Migrar meu self-hosted de docker para o mais robusto **kubernetes** (k3s);
 - Ter uma plataforma para realizar o deploy do meu outro projeto [wisdom-core](https://github.com/santanaMd/wisdom-core), uma aplicação dos conceitos de **Data Engineer**;
-- Ter menos dor de cabeça com **SPOF** ([Single Point of Failure](https://en.wikipedia.org/wiki/Single_point_of_failure)) no meu homelab.
+- ~~Ter menos dor de cabeça com **SPOF** ([Single Point of Failure](https://en.wikipedia.org/wiki/Single_point_of_failure)) no meu homelab.~~
 
 # Definições do projeto
 
 ### Caracteristicas da Infraestrutura
-- **OS**: Ubuntu Server 24.04 LTS
-- **Hardware**: Raspberry PI 5 e Orange PI 5
-- **Número de nós**: 4
+- **OS**: Ubuntu Server 24.04 LTS (via ProxMox)
+- **CPU**: 12 x AMD Ryzen 5 7600X 6-Core Processor
+- **RAM**: 56.00 GiB DDR5
+- **GPU**: ZOTAC RTX 3060 Twin Edge
 
-## Passos esperados
-- Instalação de Docker em grupo **docker-node**
-- Criação de Servidor MySQL docker para máquinas do grupo **k3s-database**
-- Instalação de nós K3s Server para grupos **server** e **hybrid**
-- Instalação de nós K3s Agent para grupos **docker-node** e **worker**
-- Aplicação de taints de acordo com especificações de grupo
-- LoadBalancer externo Kube-VIP
-- Aplicação de configuração de firewall entre os servidores
-- Configuração de Armazanamento Distribuído **Long Horn**
-- Aplicação do **Fluxo de Monitoração**
-- Configuração de Ingress Controler
-- Realizar deploy de **PiHole** para filtro de DNS e Local DNS
-- Configuração do **Cert Manager** para certificados automatizados
-- Implantação de backup em cloud **Amazon S3 Glacier**
 
-## Objetivo final
+## O que já foi implementado
 
-Configurar automaticamente cluster K3s que apresenta as seguintes características.
-- Alta Disponibilidade (HA)
-- MySQL como banco de dados do cluster
-- LoadBalancer externo Kube-VIP
-- Segregação de função de nós
-- Compliance com normas de segurança para ambientes de produção
-- Backup periódico cloud
-- Stack monitoring
-- Filtro de DNS e DNS Local
-- Certificados válidos e automaticos
+- Infra Proxmox para virtualização
+- Criação e configuração de server singlenode]
+- Implantação de docker swarm
+- Implantação de k3s
+- Implantação kube-vip (pensando em expansão futura)
+- Implementação Ingress Traefik 3 (pelo suporte à Kubernetes Gateway)
+- Implantação Cert Manager
+- Implantação Kube Prometheus Stack
 
-## Configuração Ansible
+## O que falta implementar
 
-### Grupos de servidores
-- docker-node
-- server
-- worker
-- hybrid
-
-### Definição dos grupos
-
-- **docker-node**
-    - Responsável por executar serviços docker. Em um deles está o banco de dados MySQL do cluster.
-    - Nós nesse grupo não devem executar workload server.
-    - Nós desse grupo devem apresentar taint para execução de apenas workloads de monitoramento.
-
-- **server**
-    - Nós nesse grupo devem executar apenas workload crítico do kubernetes. Deve ser aplicado taint a fim de garantir o comportamento descrito.
-- **worker**
-    - Nós nesse grupo devem executar apenas workloads não críticos. Deve ser aplicado taint a fim de garantir o comportamento descrito.
-- **hybrid**
-    - Nós nesse grupo podem executar workloads sem restrição de criticidade.
-
-## Fluxo Monitoração
-
-### Ferramentas
-
-- **Prometheus**
-    - Agregação de métricas
-- **cAdvisor**
-    - Coleta de métricas de conteiners docker
-- **Fluent Bit**
-    - Coleta de logs
-- **Opensearch**
-    - Agregação de logs do Fluent Bit
-- **Grafana**
-    - Visualização de dados do Prometheus e OpenSearch
+- Pterodactyl
+- Syncthing
+- Bancos de dados SQL e NoSQL
+- Apache Airflow
+- Apache Superset
 
 ## Embasamento do Projeto
 

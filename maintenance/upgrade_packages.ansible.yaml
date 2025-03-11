@@ -3,7 +3,7 @@
   become: true
   hosts: all
   vars_files:
-    - ../secrets/credentials.yml
+    - ../secrets/credentials/credentials.yml
   vars:
     ansible_become_password: "{{ become_password }}"
   tasks:

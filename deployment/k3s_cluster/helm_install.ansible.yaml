@@ -1,0 +1,50 @@
+- name: Atualizar cache do APT
+  ansible.builtin.apt:
+    update_cache: yes
+  become: true
+
+- name: Instalar dependências necessárias
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+    state: present
+  become: true
+
+- name: Remover arquivo de keyring antigo do Helm, se existir
+  ansible.builtin.file:
+    path: /usr/share/keyrings/helm.gpg
+    state: absent
+  become: true
+
+- name: Remover repositório APT antigo do Helm, se existir
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/helm-stable-debian.list
+    state: absent
+  become: true
+
+- name: Adicionar a chave GPG do Helm e salvar no keyring
+  ansible.builtin.apt_key:
+    url: https://baltocdn.com/helm/signing.asc
+    state: present
+    keyring: /usr/share/keyrings/helm.gpg
+  become: true
+
+- name: Adicionar repositório APT do Helm
+  ansible.builtin.apt_repository:
+    repo: "deb [arch={{ 'amd64' if ansible_architecture == 'x86_64' else ('arm64' if ansible_architecture in ['arm64', 'aarch64'] else ansible_architecture) }} signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main"
+    filename: helm-stable-debian
+    state: present
+  become: true
+
+- name: Atualizar cache do APT após adicionar repositório do Helm
+  ansible.builtin.apt:
+    update_cache: yes
+  become: true
+
+- name: Instalar o Helm
+  ansible.builtin.apt:
+    name: helm
+    state: present
+  become: true

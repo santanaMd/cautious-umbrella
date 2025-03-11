@@ -1,0 +1,26 @@
+---
+- name: Install K3s and Configure Kube-vip
+  hosts: all
+  vars_files:
+    - ../secrets/credentials/credentials.yml
+    - ../secrets/k3s/cluster_values.yml
+  vars:
+    ansible_become_password: "{{ become_password }}"
+  tasks:
+
+    - name: Importar tasks de criação do cluster
+      import_tasks: k3s_cluster/k3s_install.ansible.yaml
+
+    - name: Importar tasks de instalação Helm
+      import_tasks: k3s_cluster/helm_install.ansible.yaml
+
+    - name: Importar tasks de Instalação Cert Manager
+      import_tasks: k3s_cluster/cert_manager_install.ansible.yaml
+
+    - name: Importar tasks de instalação Traefik
+      import_tasks: k3s_cluster/traefik_gateway_install.ansible.yaml
+
+    - name: Importar tasks de instalação Prometheus
+      import_tasks: k3s_cluster/prometheus_install.ansible.yaml
+
+

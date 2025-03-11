@@ -3,7 +3,7 @@
   hosts: all
   become: true
   vars_files:
-    - ../secrets/credentials.yml
+    - ../secrets/credentials/credentials.yml
   tasks:
     - name: Restart the system
       ansible.builtin.reboot:
