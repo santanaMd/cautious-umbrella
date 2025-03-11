@@ -32,7 +32,7 @@ Meus objetivos também são 3:
 ## O que já foi implementado
 
 - Infra Proxmox para virtualização
-- Criação e configuração de server singlenode]
+- Criação e configuração de server singlenode
 - Implantação de docker swarm
 - Implantação de k3s
 - Implantação kube-vip (pensando em expansão futura)
