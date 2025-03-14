@@ -42,11 +42,13 @@ Meus objetivos também são 3:
 
 ## O que falta implementar
 
-- Pterodactyl
 - Syncthing
+- Gitlab
+- MinIO
 - Bancos de dados SQL e NoSQL
 - Apache Airflow
 - Apache Superset
+- Pterodactyl
 
 ## Embasamento do Projeto
 

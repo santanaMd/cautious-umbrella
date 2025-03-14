@@ -1,0 +1,127 @@
+---
+- name: Deploy Gitlab
+  hosts: all
+  vars_files:
+    - ../secrets/k3s/cluster_values.yml
+  tasks:
+
+    #
+    ##
+    ### Adicionar repositório Helm
+    ##
+    #
+
+    - name: Adicionar o repositório Helm Gitlab
+      community.kubernetes.helm_repository:
+        name: gitlab
+        repo_url: http://charts.gitlab.io/
+        state: present
+        force_update: true
+      run_once: true
+
+
+    #
+    ##
+    ### Criar namespace gitlab
+    ##
+    #
+
+    - name: Criar a namespace gitlab
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: gitlab
+
+
+    #
+    ##
+    ### Criar certificado SSL Cert Manager
+    ##
+    #
+
+    - name: Criar o certificado TLS com cert-manager
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: gitlab-cert-manager-prd-certificate
+            namespace: gitlab
+          spec:
+            secretName: gitlab-cert-manager-prd-certificate
+            issuerRef:
+              name: letsencrypt-prod
+              kind: ClusterIssuer
+            commonName: "*.dev.{{ domain_name }}"
+            dnsNames:
+              - "dev.{{ domain_name }}"
+              - "*.dev.{{ domain_name }}"
+      register: cert_result
+
+
+    #
+    ##
+    ### Instalar o chart GitLab usando Helm (sem configuração dos runners)
+    ##
+    #
+
+    - name: Instalar o chart Gitlab usando Helm
+      community.kubernetes.helm:
+        name: gitlab
+        chart_ref: gitlab/gitlab
+        namespace: gitlab
+        create_namespace: true
+        release_state: present
+        chart_version: "8.9.2"
+        values:
+          
+          certmanager:
+            install: false  # Não instalar o cert-manager, pois já está presente no cluster
+            installCRDs: false
+
+          global:
+            hosts:
+              domain: "dev.{{ domain_name }}"
+              externalIP: "{{ gitlab_nginx_loadbalancer_ip }}"
+
+            ingress:
+              enable: true
+              configureCertmanager: false  # Não configurar automaticamente o cert-manager
+              useNewIngressForCerts: true
+              annotations:
+                cert-manager.io/issuer-kind: ClusterIssuer
+                cert-manager.io/issuer-name: letsencrypt-prod
+              tls:
+                enabled: true
+                secretName: gitlab-cert-manager-prd-certificate
+              
+          certmanager-issuer:
+            email: "{{ cm_email }}"
+            
+          monitoring:
+            enabled: true
+          prometheus:
+            install: false
+            rbac:
+              create: false
+            alertmanager:
+              enabled: false
+            alertmanagerFiles:
+              alertmanager.yml: {}
+            kubeStateMetrics:
+              enabled: true
+            nodeExporter:
+              enabled: false
+            pushgateway:
+              enabled: false
+          persistence:
+            enabled: true
+            storageClass: "local-path"      # Altere conforme o seu cluster
+            size: 50Gi                      # Tamanho do volume de dados
+          gitlab-runner:
+            enabled: true
+      run_once: true
