@@ -8,13 +8,16 @@
     ansible_become_password: "{{ become_password }}"
   tasks:
 
-#    - name: Importar tasks de Instalação Cert Manager
-#      import_tasks: k3s_cluster/cert_manager_install.ansible.yaml
+    # - name: Importar tasks de Instalação Cert Manager
+    #   import_tasks: k3s_cluster/cert_manager_install.ansible.yaml
+
+    - name: Importar tasks de instalação Cilium
+      import_tasks: k3s_cluster/cilium.ansible.yaml
 
     - name: Importar tasks de instalação Traefik
       import_tasks: k3s_cluster/traefik_gateway_install.ansible.yaml
 
-    - name: Importar tasks de instalação Prometheus
-      import_tasks: k3s_cluster/prometheus_install.ansible.yaml
+    # - name: Importar tasks de instalação Prometheus
+    #   import_tasks: k3s_cluster/prometheus_install.ansible.yaml
 
 

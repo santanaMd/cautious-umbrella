@@ -27,6 +27,16 @@
     release_state: present
     chart_version: "{{ traefik_helm_chart_version }}"
     values:
+      installCRDs: true
+      entryPoints:
+        web:
+          address: ":80"
+        websecure:
+          address: ":443"
+        syncthing-sync:
+          adress: ":22000"
+        syncthing-discovery:
+          adress: ":21027"
       providers:
         kubernetesIngress:
           enabled: true
@@ -36,6 +46,8 @@
           namespaces: []
           labelselector: ""
           nativeLBByDefault: true
+        kubernetesCRD:
+          enabled: true
       service:
         enabled: true
         type: LoadBalancer
@@ -43,5 +55,4 @@
           loadBalancerIP: "{{ traefik_main_gateway_ip }}"
       logs:
         general:
-          # -- Alternative logging levels are TRACE, DEBUG, INFO, WARN, ERROR, FATAL, and PANIC.
           level: "INFO"

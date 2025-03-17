@@ -1,0 +1,9 @@
+---
+- name: Install fileserver services
+  hosts: all
+  vars_files:
+    - ../secrets/k3s/cluster_values.yml
+  tasks:
+
+    - name: Importar tasks de instalação Syncthing
+      import_tasks: fileserver/syncthing.ansible.yaml

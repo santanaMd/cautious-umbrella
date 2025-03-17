@@ -11,6 +11,9 @@
     - name: Importar tasks de criação do cluster
       import_tasks: k3s_cluster/k3s_install.ansible.yaml
 
+    - name: Importar tasks de instalação Cilium
+      import_tasks: k3s_cluster/cilium.ansible.yaml
+
     - name: Importar tasks de instalação Helm
       import_tasks: k3s_cluster/helm_install.ansible.yaml
 
