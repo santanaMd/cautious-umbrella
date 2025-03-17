@@ -1,0 +1,136 @@
+- name: Criar namespace do Syncthing
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: syncthing
+
+- name: Criar Certificado SSL para Syncthing
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: syncthing-cert
+        namespace: syncthing
+      spec:
+        secretName: syncthing-cert-secret
+        issuerRef:
+          name: letsencrypt-prod
+          kind: ClusterIssuer
+        commonName: "{{ domain_name }}"
+        dnsNames:
+          - "{{ domain_name }}"
+          - "*.{{ domain_name }}"
+
+- name: Criar PVC para Syncthing
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: syncthing-pvc
+        namespace: syncthing
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 64Gi
+
+- name: Criar Service para o Syncthing
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: syncthing
+        namespace: syncthing
+      spec:
+        ports:
+          - name: sync-tcp
+            port: 22000
+            targetPort: 22000
+            protocol: TCP
+          - name: sync-udp
+            port: 22000
+            targetPort: 22000
+            protocol: UDP
+          - name: discovery-udp
+            port: 21027
+            targetPort: 21027
+            protocol: UDP
+          - name: gui
+            port: 8384
+            targetPort: 8384
+            protocol: TCP
+        selector:
+          app: syncthing
+        type: ClusterIP
+
+- name: Criar Deployment do Syncthing
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: syncthing
+        namespace: syncthing
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: syncthing
+        template:
+          metadata:
+            labels:
+              app: syncthing
+          spec:
+            containers:
+              - name: syncthing
+                image: syncthing/syncthing:latest
+                ports:
+                  - containerPort: 22000
+                    protocol: TCP
+                  - containerPort: 22000
+                    protocol: UDP
+                  - containerPort: 21027
+                    protocol: UDP
+                  - containerPort: 8384
+                    protocol: TCP
+                volumeMounts:
+                  - name: syncthing-storage
+                    mountPath: /var/syncthing
+            volumes:
+              - name: syncthing-storage
+                persistentVolumeClaim:
+                  claimName: syncthing-pvc
+
+- name: Criar IngressRoute para Syncthing com Traefik 3
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: traefik.io/v1alpha1
+      kind: IngressRoute
+      metadata:
+        name: syncthing-ingress
+        namespace: syncthing
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      spec:
+        entryPoints:
+          - websecure
+        routes:
+          - match: "Host(`syncthing.{{ domain_name }}`)"
+            kind: Rule
+            services:
+              - name: syncthing
+                port: 8384
+        tls:
+          secretName: syncthing-cert-secret

@@ -1,0 +1,14 @@
+#
+##
+### Criar namespace gitlab
+##
+#
+
+- name: Criar a namespace datalab
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: datalab

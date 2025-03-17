@@ -1,0 +1,18 @@
+---
+- name: Install datalab services
+  hosts: all
+  vars_files:
+    - ../secrets/k3s/cluster_values.yml
+  tasks:
+
+    - name: Gerar namespace e manifests básicos
+      import_tasks: datalab/datalab_namespace.ansible.yaml
+
+    - name: Deploy Postgres
+      import_tasks: datalab/postgres.ansible.yaml
+
+    - name: Deploy Mongo
+      import_tasks: datalab/mongodb.ansible.yaml
+
+    - name: Deploy Minio
+      import_tasks: datalab/minio.ansible.yaml
