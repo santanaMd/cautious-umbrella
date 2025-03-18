@@ -1,0 +1,137 @@
+- name: Criar namespace Kafka
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: airflow
+
+- name: Gerar uma WEBSERVER_SECRET_KEY usando o plugin community.general.random_string
+  ansible.builtin.set_fact:
+    new_airflow_secret_key: "{{ lookup('community.general.random_string', length=32, charset='ascii_letters+digits') }}"
+
+- name: Criar Secret para WEBSERVER_SECRET_KEY
+  kubernetes.core.k8s:
+    state: present
+    namespace: airflow
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: airflow-webserver-secret-key
+      data:
+        webserver-secret-key: "{{ new_airflow_secret_key | b64encode }}"
+
+- name: Criar Secret com Token do Git para DAGs
+  kubernetes.core.k8s:
+    state: present
+    namespace: airflow
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: airflow-git-secret
+      data:
+        GITSYNC_USERNAME: "{{ airflow_git_user | b64encode }}"
+        GITSYNC_PASSWORD: "{{ airflow_git_token | b64encode }}"
+
+- name: Adicionar o repositório Helm airflow
+  community.kubernetes.helm_repository:
+    name: apache-airflow
+    repo_url: https://airflow.apache.org/
+    state: present
+    force_update: true
+
+- name: Criar um PVC para os logs
+  kubernetes.core.k8s:
+    state: present
+    namespace: airflow
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: airflow-logs-pvc
+        namespace: airflow
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+        storageClassName: local-path
+
+- name: Instalar o chart airflow usando Helm em K3s (Single Node)
+  community.kubernetes.helm:
+    name: airflow
+    chart_ref: apache-airflow/airflow
+    namespace: airflow
+    create_namespace: true
+    release_state: present
+    chart_version: "{{ airflow_datalab_chart_version }}"
+    values:
+      executor: "LocalExecutor"  # Usando LocalExecutor para ambiente single node
+      webserverSecretKey: webserver-secret-key
+      webserverSecretKeySecretName: airflow-webserver-secret-key
+      dags:
+        persistence:
+          enabled: true
+          size: 1Gi
+        gitSync:
+          enabled: true
+          repo: "https://{{ airflow_git_user }}@github.com/{{ airflow_git_repo }}"
+          branch: "{{ airflow_git_branch | default('main') }}"
+          ref: "{{ airflow_git_branch | default('main') }}"  # Correção para 'ref' ao invés de 'revision'
+          subPath: "{{ airflow_git_subpath | default('') }}"
+          depth: 1
+          wait: 60
+          credentialsSecret: airflow-git-secret  # Correção para usar 'credentialsSecret' ao invés de 'envFromSecret'
+      logs:
+        persistence:
+          enabled: true
+          existingClaim: airflow-logs-pvc
+
+      metadata:
+        persistence:
+          enabled: true
+          size: 8Gi
+
+- name: Criar o certificado Airflow TLS com cert-manager
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: airflow-cert-manager-certificate
+        namespace: airflow
+      spec:
+        secretName: airflow-cert-manager-certificate
+        issuerRef:
+          name: letsencrypt-prod
+          kind: ClusterIssuer
+        commonName: "{{ domain_name }}"
+        dnsNames:
+          - "{{ domain_name }}"
+          - "*.{{ domain_name }}"
+
+- name: Criar IngressRoute para o Airflow no Traefik 3
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: traefik.io/v1alpha1
+      kind: IngressRoute
+      metadata:
+        name: airflow-web
+        namespace: airflow
+      spec:
+        entryPoints:
+          - websecure
+        routes:
+          - match: "Host(`airflow.{{ domain_name }}`)"
+            kind: Rule
+            services:
+              - name: airflow-webserver
+                port: 8080
+        tls:
+          secretName: airflow-cert-manager-certificate
