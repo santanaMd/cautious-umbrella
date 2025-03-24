@@ -1,0 +1,15 @@
+---
+- name: Install Airflow Chart
+  hosts: all
+  vars_files:
+    - ../secrets/k3s/cluster_values.yml
+  tasks:
+
+    - name: Create Namespace and apply basic configs
+      import_tasks: airflow/basics.ansible.yaml
+
+    - name: Build Custom Airflow Docker Image
+      import_tasks: airflow/build_docker_image.ansible.yaml
+
+    - name: Deploy Airflow Helm Chart
+      import_tasks: airflow/install_airflow_chart.ansible.yaml

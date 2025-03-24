@@ -1,3 +1,10 @@
+#
+##
+### Instalação Helm
+##
+#
+
+
 - name: Criar namespace Kafka
   kubernetes.core.k8s:
     state: present
@@ -61,6 +68,8 @@
             storage: 5Gi
         storageClassName: local-path
 
+
+
 - name: Instalar o chart airflow usando Helm em K3s (Single Node)
   community.kubernetes.helm:
     name: airflow
@@ -73,6 +82,10 @@
       executor: "LocalExecutor"  # Usando LocalExecutor para ambiente single node
       webserverSecretKey: webserver-secret-key
       webserverSecretKeySecretName: airflow-webserver-secret-key
+      images:
+        airflow:
+          repository: "{{ custom_airflow_repo_name }}"
+          tag: "latest"
       dags:
         persistence:
           enabled: true
@@ -90,11 +103,13 @@
         persistence:
           enabled: true
           existingClaim: airflow-logs-pvc
-
       metadata:
         persistence:
           enabled: true
           size: 8Gi
+      env:
+        - name: AIRFLOW__CORE__TEST_CONNECTION
+          value: "Enabled"
 
 - name: Criar o certificado Airflow TLS com cert-manager
   kubernetes.core.k8s:
