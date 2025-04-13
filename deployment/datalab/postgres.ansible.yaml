@@ -71,6 +71,8 @@
         extraEnvVars:
           - name: PGHOST
             value: "postgres.datalab.{{ domain_name }}"
+        extendedConfiguration: |
+          timezone = 'America/Sao_Paulo'
       global:
         postgresql:
           auth:

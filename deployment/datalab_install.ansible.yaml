@@ -17,8 +17,6 @@
     - name: Deploy Minio
       import_tasks: datalab/minio.ansible.yaml
 
-    - name: Deploy Airflow
-      import_tasks: datalab/airflow.ansible.yaml
 
     # - name: Deploy Kafka
     #   import_tasks: datalab/kafka.ansible.yaml
