@@ -4,25 +4,58 @@
 ##
 #
 
+- name: Remover todas as imagens existentes no repositório
+  community.docker.docker_image_remove:
+    name: "{{ custom_airflow_repo_name }}"
+    force: true
+  ignore_errors: true 
+
+- name: Gather list of Docker images
+  community.docker.docker_image_info:
+    name: "{{ custom_airflow_repo_name }}"
+  register: images_info
+
+- name: Remove '{{ custom_airflow_repo_name }}' images
+  community.docker.docker_image:
+    name: "{{ item.repo_tags[0] }}"
+    state: absent
+  loop: "{{ images_info.images }}"
+  when: item.repo_tags is defined and '{{ custom_airflow_repo_name }}' in item.repo_tags[0]
+
 - name: Criar arquivo requirements.txt
   ansible.builtin.copy:
     dest: "./requirements.txt"
     content: |
-      apache-airflow-providers-mongo
+      apache-airflow-providers-mongo==3.1.0
+      apache-airflow-providers-amazon==9.4.0
+      apache-airflow-providers-cncf-kubernetes==10.3.1
 
 - name: Criar Dockerfile para a imagem personalizada do Airflow
   ansible.builtin.copy:
     dest: "./Dockerfile"
     content: |
-      FROM apache/airflow:latest
+      FROM apache/airflow:{{ airflow_container_tag }}
+
+      USER root
+
+      RUN apt-get update \
+        && apt-get install -y --no-install-recommends \
+              vim \
+        && apt-get autoremove -yqq --purge \
+        && apt-get clean \
+        && rm -rf /var/lib/apt/lists/*
+
+      USER airflow
+
       COPY requirements.txt /requirements.txt
-      RUN pip install --no-cache-dir -r /requirements.txt
+      RUN pip install --no-cache-dir "apache-airflow=={{ airflow_version }}" -r /requirements.txt
 
 - name: Construir a imagem Docker personalizada do Airflow
   community.docker.docker_image:
     name: "{{ custom_airflow_repo_name }}:latest"
     build:
       path: .
+      nocache: true
     source: build
     state: present
 

@@ -1,0 +1,113 @@
+- name: Criar PVC de configuração do File Browser
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: filebrowser-config-pvc
+        namespace: airflow
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 100Mi
+
+- name: Criar Deployment do File Browser
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: filebrowser
+        namespace: airflow
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: filebrowser
+        template:
+          metadata:
+            labels:
+              app: filebrowser
+          spec:
+            containers:
+              - name: filebrowser
+                image: filebrowser/filebrowser:latest
+                ports:
+                  - containerPort: 80
+                env:
+                  - name: FB_NOAUTH
+                    value: "false"
+                  - name: FB_AUTH_METHOD
+                    value: "json"
+                volumeMounts:
+                  - name: dags-volume
+                    mountPath: /srv
+                  - name: filebrowser-data
+                    mountPath: /database
+            volumes:
+              - name: dags-volume
+                persistentVolumeClaim:
+                  claimName: airflow-dags
+              - name: filebrowser-data
+                persistentVolumeClaim:
+                  claimName: filebrowser-config-pvc
+
+- name: Criar Service para expor o File Browser
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: filebrowser
+        namespace: airflow
+      spec:
+        selector:
+          app: filebrowser
+        ports:
+          - port: 80
+            targetPort: 80
+            protocol: TCP
+
+- name: Criar certificado TLS com cert-manager para o File Browser
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: filebrowser-cert
+        namespace: airflow
+      spec:
+        secretName: filebrowser-cert-tls
+        issuerRef:
+          name: letsencrypt-prod
+          kind: ClusterIssuer
+        commonName: "filebrowser.airflow.{{ domain_name }}"
+        dnsNames:
+          - "filebrowser.airflow.{{ domain_name }}"
+
+- name: Criar IngressRoute com TLS para o File Browser no Traefik 3
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: traefik.io/v1alpha1
+      kind: IngressRoute
+      metadata:
+        name: filebrowser-websecure
+        namespace: airflow
+      spec:
+        entryPoints:
+          - websecure
+        routes:
+          - match: "Host(`filebrowser.airflow.{{ domain_name }}`)"
+            kind: Rule
+            services:
+              - name: filebrowser
+                port: 80
+        tls:
+          secretName: filebrowser-cert-tls

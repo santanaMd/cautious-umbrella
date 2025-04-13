@@ -13,3 +13,6 @@
 
     - name: Deploy Airflow Helm Chart
       import_tasks: airflow/install_airflow_chart.ansible.yaml
+
+    - name: Deploy Airflow Filebrowser
+      import_tasks: airflow/deploy_filebrowser.ansible.yaml
