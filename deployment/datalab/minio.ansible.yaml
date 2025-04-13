@@ -79,5 +79,10 @@
             services:
               - name: datalab-minio
                 port: 9001
+          - match: "Host(`minio-api.datalab.{{ domain_name }}`)"
+            kind: Rule
+            services:
+              - name: datalab-minio
+                port: 9000
         tls:
           secretName: datalab-minio-cert-manager-certificate

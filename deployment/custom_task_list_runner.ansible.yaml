@@ -20,7 +20,5 @@
     #  - name: Importar tasks de instalação Prometheus
     #    import_tasks: k3s_cluster/prometheus_install.ansible.yaml
 
-    - name: Deploy Airflow
-      import_tasks: datalab/airflow.ansible.yaml
 
 

@@ -27,6 +27,8 @@
       kind: Secret
       metadata:
         name: airflow-webserver-secret-key
+        labels:
+          app.kubernetes.io/managed-by: Helm
       data:
         webserver-secret-key: "{{ new_airflow_secret_key | b64encode }}"
 
@@ -80,11 +82,13 @@
     chart_version: "{{ airflow_datalab_chart_version }}"
     values:
       executor: "LocalExecutor"  # Usando LocalExecutor para ambiente single node
-      webserverSecretKey: webserver-secret-key
+      #webserverSecretKey: "{{ airflow_service_key }}"
       webserverSecretKeySecretName: airflow-webserver-secret-key
+      defaultAirflowRepository: "{{ custom_airflow_repo_name }}"
       images:
         airflow:
           repository: "{{ custom_airflow_repo_name }}"
+          pullPolicy: Always
           tag: "latest"
       dags:
         persistence:
@@ -110,6 +114,7 @@
       env:
         - name: AIRFLOW__CORE__TEST_CONNECTION
           value: "Enabled"
+      extraEnvFrom: "{{ airflow_extraEnvFrom }}"
 
 - name: Criar o certificado Airflow TLS com cert-manager
   kubernetes.core.k8s:
